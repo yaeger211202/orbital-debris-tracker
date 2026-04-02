@@ -18,12 +18,15 @@ function resolveClientDist(): string {
 }
 
 const PORT = Number(process.env.PORT) || 8787;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const clientOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const app = express();
 app.use(
   cors({
-    origin: [CLIENT_ORIGIN, /^http:\/\/localhost:\d+$/],
+    origin: [...clientOrigins, /^http:\/\/localhost:\d+$/],
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
   })

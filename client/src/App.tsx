@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiUrl } from "./api";
 import { ChatPanel, type ChatMessage } from "./components/ChatPanel";
 import { GlobePanel, type IssSnapshot } from "./components/GlobePanel";
 import { StarField } from "./components/StarField";
 
 async function fetchIss(): Promise<IssSnapshot> {
-  const res = await fetch("/api/iss");
+  const res = await fetch(apiUrl("/api/iss"));
   if (!res.ok) {
     const j = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(j.error || `HTTP ${res.status}`);
@@ -43,7 +44,7 @@ export default function App() {
     setMessages((m) => [...m, userMsg]);
     setLoading(true);
     try {
-      const res = await fetch("/api/query", {
+      const res = await fetch(apiUrl("/api/query"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: text }),
