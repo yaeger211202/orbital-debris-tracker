@@ -1,6 +1,7 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAgent } from "./agent.js";
@@ -10,11 +11,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
-function resolveClientDist(): string {
-  const base = __dirname.endsWith(`${path.sep}dist`)
-    ? path.resolve(__dirname, "../..")
-    : path.resolve(__dirname, "..");
-  return path.join(base, "client", "dist");
+/** Resolve built SPA folder; try several layouts (monorepo, cwd, nested). */
+function resolveClientDist(): string | null {
+  const serverRoot = path.resolve(__dirname, "..");
+  const candidates = [
+    path.join(serverRoot, "..", "client", "dist"),
+    path.join(serverRoot, "client", "dist"),
+    path.join(process.cwd(), "client", "dist"),
+    path.join(process.cwd(), "dist"),
+  ];
+  for (const p of candidates) {
+    const indexHtml = path.join(p, "index.html");
+    try {
+      if (fs.existsSync(indexHtml)) return p;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
 }
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -24,6 +38,8 @@ const clientOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
   .filter(Boolean);
 
 const app = express();
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: [...clientOrigins, /^http:\/\/localhost:\d+$/],
@@ -33,7 +49,10 @@ app.use(
 );
 app.use(express.json({ limit: "256kb" }));
 
-app.get("/api/iss", async (_req, res) => {
+// --- API: register first, always, so static/SPA never intercept /api/* ---
+const api = express.Router();
+
+api.get("/iss", async (_req, res) => {
   try {
     const raw = await fetchIssPosition();
     res.json(enrichIssForAgent(raw));
@@ -43,7 +62,7 @@ app.get("/api/iss", async (_req, res) => {
   }
 });
 
-app.get("/api/health", (_req, res) => {
+api.get("/health", (_req, res) => {
   res.json({
     ok: true,
     hasAnthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
@@ -53,13 +72,7 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-const clientDist = resolveClientDist();
-
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(clientDist, { index: false }));
-}
-
-app.post("/api/query", async (req, res) => {
+api.post("/query", async (req, res) => {
   const question =
     typeof req.body?.question === "string" ? req.body.question.trim() : "";
   if (!question) {
@@ -88,15 +101,50 @@ app.post("/api/query", async (req, res) => {
   }
 });
 
-if (process.env.NODE_ENV === "production") {
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(clientDist, "index.html"));
+api.use((_req, res) => {
+  res.status(404).json({ error: "Unknown API route" });
+});
+
+app.use("/api", api);
+
+// --- Production: static + SPA only after API, and only if dist exists ---
+const clientDist = resolveClientDist();
+const isProd = process.env.NODE_ENV === "production";
+
+if (isProd && clientDist) {
+  app.use(
+    express.static(clientDist, {
+      index: false,
+      fallthrough: true,
+    })
+  );
+  app.get(/.*/, (req, res, next) => {
+    if (req.path.startsWith("/api")) {
+      next();
+      return;
+    }
+    const indexHtml = path.join(clientDist, "index.html");
+    res.sendFile(indexHtml, (err) => {
+      if (err) next(err);
+    });
   });
 }
 
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
 app.listen(PORT, () => {
-  console.log(`Orbital Debris Agent API http://localhost:${PORT}`);
-  if (process.env.NODE_ENV === "production") {
-    console.log(`Serving SPA from ${clientDist}`);
+  console.log(`Orbital Debris Agent API listening on port ${PORT}`);
+  console.log(`NODE_ENV=${process.env.NODE_ENV ?? "(unset)"}`);
+  console.log(
+    `API routes: GET /api/iss, GET /api/health, POST /api/query (via /api router)`
+  );
+  if (isProd) {
+    console.log(
+      clientDist
+        ? `Serving SPA from ${clientDist}`
+        : "No client dist found — API-only mode (static/SPA disabled)"
+    );
   }
 });
