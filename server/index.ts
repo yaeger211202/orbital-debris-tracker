@@ -1,4 +1,5 @@
 import cors from "cors";
+import type { CorsOptions } from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import fs from "node:fs";
@@ -32,21 +33,58 @@ function resolveClientDist(): string | null {
 }
 
 const PORT = Number(process.env.PORT) || 8787;
-const clientOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+
+/** Match browser Origin header (no trailing slash). */
+function normalizeOrigin(url: string): string {
+  return url.trim().replace(/^['"]|['"]$/g, "").replace(/\/+$/, "");
+}
+
+const VERCEL_CLIENT = "https://orbital-debris-tracker-client.vercel.app";
+
+const allowedOrigins = new Set<string>([
+  normalizeOrigin(VERCEL_CLIENT),
+  ...(process.env.CLIENT_ORIGIN || "http://localhost:5173")
+    .split(",")
+    .map((s) => normalizeOrigin(s))
+    .filter(Boolean),
+]);
+
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    const o = normalizeOrigin(origin);
+    if (allowedOrigins.has(o)) {
+      callback(null, true);
+      return;
+    }
+    if (/^http:\/\/localhost:\d+$/.test(o)) {
+      callback(null, true);
+      return;
+    }
+    callback(null, false);
+  },
+  methods: ["GET", "POST", "OPTIONS", "HEAD"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "Origin",
+    "X-Requested-With",
+    "Access-Control-Request-Method",
+    "Access-Control-Request-Headers",
+  ],
+  optionsSuccessStatus: 204,
+  maxAge: 86_400,
+  preflightContinue: false,
+};
 
 const app = express();
 app.set("trust proxy", 1);
 
-app.use(
-  cors({
-    origin: [...clientOrigins, /^http:\/\/localhost:\d+$/],
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "256kb" }));
 
 // --- API: register first, always, so static/SPA never intercept /api/* ---
@@ -137,6 +175,7 @@ app.use((_req, res) => {
 app.listen(PORT, () => {
   console.log(`Orbital Debris Agent API listening on port ${PORT}`);
   console.log(`NODE_ENV=${process.env.NODE_ENV ?? "(unset)"}`);
+  console.log(`CORS allowlist: ${[...allowedOrigins].join(", ")}`);
   console.log(
     `API routes: GET /api/iss, GET /api/health, POST /api/query (via /api router)`
   );
