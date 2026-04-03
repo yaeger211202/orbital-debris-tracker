@@ -5,7 +5,7 @@ A full-stack AI agent that makes space situational awareness accessible through 
 ![Tech Stack](https://img.shields.io/badge/Claude-Anthropic-orange) ![React](https://img.shields.io/badge/React-19-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Node.js](https://img.shields.io/badge/Node.js-Express-green)
 
 ## 🌍 Live Demo
-[🚀 View Live App](https://client-production-317a.up.railway.app)
+[🚀 View Live App](https://orbital-debris-tracker-client.vercel.app)
 
 ## 💬 Example Queries
 - "Where is the ISS right now?"
