@@ -47,3 +47,7 @@ npm install
 
 ### Environment Variables
 Create a `.env` file:
+
+## 📸 Screenshot
+<img width="1917" height="907" alt="Screenshot 2026-04-02 024503" src="https://github.com/user-attachments/assets/666345ca-5cab-4720-9688-ebccddb43aeb" />
+
